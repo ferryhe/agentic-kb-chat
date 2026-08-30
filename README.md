@@ -2,7 +2,7 @@
 
 `agentic-kb-chat` is a modular, evaluation-driven knowledge-base chat engine built around reusable content assets, pluggable KB capabilities, sealed manifests, and a bounded Agentic Chat runtime.
 
-Markdown is the canonical source/provenance boundary. Chunk sets and reusable representations such as dense embeddings may be prepared once and shared by multiple knowledge bases. A KB then pins an exact content snapshot and installs only the Layer 2 capability plugins it needs.
+Markdown is the canonical **document/content provenance boundary**. KB configuration and manifests are control metadata rather than source documents. Chunk sets and reusable representations such as dense embeddings may be prepared once and shared by multiple knowledge bases. A KB then pins an exact content snapshot and installs only the Layer 2 capability plugins it needs.
 
 The architecture deliberately separates four layers:
 
@@ -740,7 +740,7 @@ The Agent should reason over normalized evidence rather than raw FAISS rows, BM2
 
 ## Markdown input contract
 
-The smallest supported source is categorized Markdown:
+The smallest supported source content is categorized Markdown plus KB control configuration:
 
 ```text
 kb-source/
@@ -808,7 +808,9 @@ Compatible prebuilt chunk/representation assets may be reused instead of regener
 
 Upstream systems may provide Markdown and reusable assets. This project focuses on KB composition, pluggable KB capabilities, sealed manifests, and Agentic Chat.
 
-## Modular architecture
+## Proposed modular architecture
+
+The repository is currently design-first; the following `src/` tree is the **target implementation layout**, not a claim that these directories already exist.
 
 ```text
 src/
