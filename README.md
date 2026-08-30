@@ -1,15 +1,15 @@
 # agentic-kb-chat
 
-`agentic-kb-chat` is a modular, evaluation-driven knowledge-base chat engine built around reusable retrieval assets, versioned knowledge bases, manifest-declared capabilities, and bounded Agentic Chat.
+`agentic-kb-chat` is a modular, evaluation-driven knowledge-base chat engine built around reusable content assets, pluggable KB capabilities, sealed manifests, and a bounded Agentic Chat runtime.
 
-Markdown is the canonical source boundary. Chunking and embeddings are reusable assets: the same chunks and embeddings can be shared by multiple knowledge bases instead of being regenerated for every KB. A KB composes those reusable assets into its own searchable and structured knowledge package.
+Markdown is the canonical source/provenance boundary. Chunk sets and reusable representations such as dense embeddings may be prepared once and shared by multiple knowledge bases. A KB then pins an exact content snapshot and installs only the Layer 2 capability plugins it needs.
 
 The architecture deliberately separates four layers:
 
-1. **Reusable Assets** — chunks and embeddings that are independent of any one KB.
-2. **KB Assets** — pluggable search, structure, graph, hierarchy, domain, and version-aware artifacts built for one KB snapshot.
-3. **KB Manifest** — a separate version/identity/inventory/capability description for that KB snapshot.
-4. **Agent Tools + Runtime** — a generic runtime that reads the manifest, exposes supported tools, retrieves evidence, and answers or abstains.
+1. **Reusable Assets** — KB-independent document/chunk assets and reusable representations.
+2. **KB Assets / Plugins** — KB-specific searchable or structured artifacts built from one content snapshot.
+3. **KB Manifest** — the sealed identity, inventory, compatibility contract, and integrity receipt for one published KB version.
+4. **Agent Tools + Runtime** — a generic runtime that discovers compatible capabilities, retrieves evidence, and answers or abstains.
 
 The central design rule is:
 
@@ -22,31 +22,26 @@ flowchart TB
     MD[Markdown documents]
 
     subgraph L1["1. Reusable Assets — KB-independent"]
-        CHUNK[Chunks]
-        EMB[Embeddings]
+        CHUNK[Immutable ChunkSets / Chunks]
+        DENSE[Reusable Dense Embeddings]
     end
 
     MD --> CHUNK
-    CHUNK --> EMB
+    CHUNK --> DENSE
 
-    SNAP["KB Snapshot\nexact documents + chunk sets + embedding identity"]
+    SNAP["KB Content Snapshot\nexact documents + chunk sets + source identities"]
     CHUNK --> SNAP
-    EMB --> SNAP
 
-    subgraph L2["2. KB Assets — independent capability plugins"]
-        SEARCH["Search Assets\nBM25 / Vector / Sparse / Late Interaction"]
+    subgraph L2["2. KB Assets — capability plugins"]
+        SEARCH["Search Assets\nBM25 / Dense Vector / Sparse / Late Interaction"]
         STRUCT["Document Structure\nDocuments / Sections / Hierarchy"]
         GRAPH["Graph Assets\nEntities / Relations / Communities"]
         WIKI["Wiki Assets\nPages / Links / Categories / Backlinks"]
-        TREE["Hierarchical Summary Assets\nSummary Tree / Multi-level Retrieval"]
+        TREE["Hierarchical Assets\nSummary Tree / Multi-level Views"]
         DOMAIN["Domain Assets\nFormula / Table / Terms / Definitions"]
         REF["Reference Assets\nCitations / Cross-references / Aliases"]
         TIME["Temporal Assets\nVersions / Amendments / Effective Dates"]
         META["Metadata Assets\nTaxonomy / Facets / Topics"]
-    end
-
-    subgraph L3["3. KB Manifest — independent control artifact"]
-        MANIFEST["manifest.json\nKB version + snapshot fingerprint\ncapabilities + artifact references\nschema versions + digests"]
     end
 
     SNAP --> SEARCH
@@ -58,32 +53,38 @@ flowchart TB
     SNAP --> REF
     SNAP --> TIME
     SNAP --> META
-    SNAP --> MANIFEST
+    DENSE -. optional dependency .-> SEARCH
 
-    SEARCH -. referenced by .-> MANIFEST
-    STRUCT -. referenced by .-> MANIFEST
-    GRAPH -. referenced by .-> MANIFEST
-    WIKI -. referenced by .-> MANIFEST
-    TREE -. referenced by .-> MANIFEST
-    DOMAIN -. referenced by .-> MANIFEST
-    REF -. referenced by .-> MANIFEST
-    TIME -. referenced by .-> MANIFEST
-    META -. referenced by .-> MANIFEST
+    VALIDATE[Validate selected Layer 2 plugin outputs]
+    SEARCH --> VALIDATE
+    STRUCT --> VALIDATE
+    GRAPH --> VALIDATE
+    WIKI --> VALIDATE
+    TREE --> VALIDATE
+    DOMAIN --> VALIDATE
+    REF --> VALIDATE
+    TIME --> VALIDATE
+    META --> VALIDATE
+
+    subgraph L3["3. KB Manifest — sealed control artifact"]
+        MANIFEST["manifest.json\nKB version + snapshot fingerprint\ninstalled plugin contracts\nartifact refs + schema versions + digests"]
+    end
+
+    SNAP --> MANIFEST
+    VALIDATE --> MANIFEST
 
     subgraph L4["4. Agent Tools + Runtime"]
         REGISTRY[Capability / Tool Registry]
-        LOAD[Load KB Manifest]
-        TOOLS[Resolve available tools]
+        LOAD[Load + validate Manifest]
+        TOOLS[Resolve compatible tools]
         AGENT[Bounded Agent Runtime]
-        EVIDENCE[Evidence Set]
+        EVIDENCE[Normalized Evidence Set]
         ANSWER[Grounded Answer / Abstain]
     end
 
     MANIFEST --> LOAD
-    REGISTRY --> TOOLS
-    LOAD --> TOOLS
-    TOOLS --> AGENT
-    AGENT --> EVIDENCE --> ANSWER
+    REGISTRY --> LOAD
+    LOAD --> TOOLS --> AGENT
 
     AGENT -->|search| SEARCH
     AGENT -->|navigate| STRUCT
@@ -94,25 +95,151 @@ flowchart TB
     AGENT -->|citation / reference tracing| REF
     AGENT -->|version / date reasoning| TIME
     AGENT -->|filter / classify| META
+
+    AGENT --> EVIDENCE --> ANSWER
 ```
 
-## Layer 2 is the plugin layer
+## The four boundaries
 
-Layer 2 is intentionally open-ended. It is not one fixed `ready_data` format and it is not limited to vector RAG.
+### Layer 1 — reusable assets
 
-A Layer 2 capability is valid when it has four things:
+Layer 1 contains assets that can be reused by many KBs.
+
+```text
+Markdown document
+    ↓
+immutable ChunkSet
+    ↓
+Chunk[]
+    └── optional reusable representations
+        └── DenseEmbedding[chunk_id, embedding_identity]
+```
+
+The important rule is that a KB does not own the chunking result or a standard dense embedding. It pins the exact immutable assets it wants to use.
+
+```text
+KB Regulation ─┐
+               ├── shared ChunkSet / Dense Embeddings
+KB Valuation ──┘
+```
+
+Core reusable identities include:
+
+- `document_id` — stable logical document identity.
+- `chunk_set_id` — one immutable chunking result for one document/content/profile combination.
+- `chunk_id` — one retrieval unit inside a chunk set.
+- `embedding_identity_key` — one reusable dense embedding representation identity.
+
+Not every Layer 2 search plugin must use the reusable dense embedding. Sparse or late-interaction plugins may build their own representations and record those dependencies in their own plugin contract.
+
+### KB Content Snapshot — representation-neutral composition
+
+Before Layer 2 is built, the KB pins its exact content composition.
+
+```text
+KB Content Snapshot
+├── kb_id
+├── document identities / source versions
+├── exact chunk_set_ids
+└── snapshot_fingerprint
+```
+
+The snapshot is deliberately **representation-neutral**. It does not require one global embedding identity because one KB may install multiple search plugins, including multiple dense-vector indexes built from different embedding identities.
+
+This separates two questions:
+
+```text
+KB Snapshot:  "What content is in this KB version?"
+Layer 2:      "What representations and capabilities were built over it?"
+```
+
+### Layer 2 — the plugin layer
+
+Layer 2 is the extension point of the system. It contains persisted, searchable, navigable, or structured KB artifacts.
+
+A canonical Layer 2 plugin contract has seven required pieces:
+
+```text
+1. Builder contract
+2. Artifact schema
+3. Manifest capability declaration
+4. Artifact validator
+5. Runtime Tool Adapter
+6. Evidence / citation mapping
+7. Evaluation coverage
+```
+
+The simplified lifecycle is:
 
 ```text
 Builder
   ↓
 KB Asset
   ↓
-Manifest capability declaration
+Validator
   ↓
-Tool Adapter
+Manifest records installed plugin
+  ↓
+Tool Adapter exposes its capabilities
+  ↓
+Normalized Evidence
 ```
 
-Once those four pieces exist, the generic runtime can use the capability without creating a new KB-specific Agent.
+A new KB does not need a new Agent. A new capability type needs one reusable plugin implementation; after that, any compatible KB can install it.
+
+### Layer 3 — sealed KB manifest
+
+Layer 2 assets and the Layer 3 manifest are **different artifact types and different contracts**, but a final manifest is not built independently of the assets it seals.
+
+The order is:
+
+```text
+KB Content Snapshot
+       ↓
+Build/reuse selected Layer 2 plugin artifacts
+       ↓
+Validate plugin artifacts
+       ↓
+Seal manifest with exact plugin versions, schemas, refs and digests
+       ↓
+Validate complete KB package
+       ↓
+Publish immutable KB Version
+```
+
+So "Layer 2 and Layer 3 are independent" means:
+
+- the manifest is not a retrieval index;
+- Layer 2 artifacts have their own schemas and lifecycles;
+- one Layer 2 plugin can be rebuilt/replaced without redesigning unrelated plugins or the Agent;
+- unchanged immutable plugin artifacts may be reused by a new KB build;
+- any published change to the installed plugin inventory or artifact digests is sealed into a new KB version.
+
+It does **not** mean the final manifest can be sealed before the Layer 2 outputs it references exist.
+
+### Layer 4 — generic runtime and composition
+
+Layer 4 contains executable behavior.
+
+The runtime reads the sealed manifest, validates that every enabled capability has a compatible registered Tool Adapter, and exposes only those tools to the bounded Agent runtime.
+
+```text
+Manifest installed plugin/capability
+        ↓
+Capability Registry
+        ↓
+Compatible Tool Adapter
+        ↓
+Layer 2 Asset
+        ↓
+Normalized Evidence
+```
+
+If an enabled capability has no compatible Tool Adapter or the artifact/schema version is unsupported, that KB version is not runtime-ready. The system should fail clearly rather than silently dropping the capability.
+
+## Layer 2 plugin families
+
+Layer 2 is intentionally open-ended. The following are plugin families, not a mandatory package that every KB must build.
 
 ### A. Search assets
 
@@ -122,26 +249,34 @@ These answer: **which evidence is relevant to this query?**
 Search Assets
 ├── BM25 / lexical index
 ├── Dense vector index
-├── Hybrid fusion
 ├── Sparse neural index
 └── Late-interaction index
 ```
 
-Examples of capabilities:
+Example persisted-plugin capabilities:
 
 ```text
 search.lexical
 search.vector
-search.hybrid
 search.sparse
 search.late_interaction
 ```
 
-BM25 uses chunk text directly. Dense vector search uses reusable embeddings. Other retrieval implementations may introduce their own derived representations while still fitting the same Layer 2 contract.
+BM25 indexes chunk text directly and needs no embedding. Dense vector search can reuse Layer 1 dense embeddings. Sparse and late-interaction plugins may build their own KB-specific representations.
 
-### B. Document and hierarchical structure assets
+**Hybrid search, fusion, and reranking are normally Layer 4 runtime behaviors, not Layer 2 assets.** A runtime may expose `search.hybrid` when compatible lexical/vector search tools are available and the configured composition policy supports fusion.
 
-These answer: **where does this piece of evidence live in the document structure?**
+```text
+BM25 Tool ─────┐
+               ├── Runtime fusion → Rerank → Evidence
+Vector Tool ───┘
+```
+
+If a future fusion method produces a persisted learned index/model that is part of the KB package, that persisted object may itself be modeled as a Layer 2 plugin artifact.
+
+### B. Document and hierarchy assets
+
+These answer: **where does evidence live in the source structure?**
 
 ```text
 Document
@@ -152,19 +287,17 @@ Document
     └── Section
 ```
 
-Possible assets include:
+Possible artifacts:
 
 ```text
 documents
 sections
 heading tree
 parent / child links
-neighboring chunks
+neighbor links
 multi-level summaries
 summary tree
 ```
-
-A hierarchical summary tree can support retrieval at several abstraction levels instead of only retrieving flat chunks.
 
 Example capabilities:
 
@@ -174,6 +307,8 @@ structure.section
 structure.hierarchy
 retrieval.hierarchical
 ```
+
+A hierarchical summary/tree plugin can retrieve at several abstraction levels instead of only searching flat chunks.
 
 ### C. GraphRAG assets
 
@@ -189,16 +324,14 @@ Graph Assets
 └── Graph index
 ```
 
-This is a richer form of the simple structural `relations` artifact.
-
-Simple relation:
+Simple structural relations:
 
 ```text
 Document --has_section--> Section
 Section  --has_formula--> Formula
 ```
 
-GraphRAG-style relation:
+GraphRAG-style semantic relations:
 
 ```text
 OSFI --regulates--> Insurer
@@ -218,7 +351,7 @@ graph.global_summary
 
 ### D. Wiki-style assets
 
-These answer: **how can the Agent navigate a curated page/link knowledge structure?**
+These answer: **how can the Agent navigate a page/link knowledge structure?**
 
 ```text
 Wiki Assets
@@ -230,8 +363,6 @@ Wiki Assets
 └── Parent / child navigation
 ```
 
-Wiki structure can come directly from source structure or be generated as a derived KB view.
-
 Example capabilities:
 
 ```text
@@ -242,11 +373,11 @@ wiki.follow_link
 wiki.backlinks
 ```
 
-Graph and Wiki assets may overlap, but they have different semantics: Graph assets model entities and semantic relations; Wiki assets model navigable knowledge pages and explicit links.
+Graph and Wiki assets can overlap but have different semantics: Graph assets model entities and semantic relations; Wiki assets model navigable knowledge pages and explicit links.
 
 ### E. Domain-specific structured assets
 
-These answer questions that normal chunk search handles poorly.
+These support questions that flat chunk retrieval handles poorly.
 
 ```text
 Domain Assets
@@ -269,7 +400,7 @@ definition.lookup
 clause.lookup
 ```
 
-The current actuarial use case naturally benefits from formulas, tables, calculation terms, definitions, and regulation clauses.
+The actuarial/regulation use case naturally benefits from formulas, tables, calculation terms, definitions, and clauses.
 
 ### F. Reference and citation assets
 
@@ -293,8 +424,6 @@ reference.outgoing
 reference.incoming
 reference.alias
 ```
-
-These are particularly useful for standards, regulations, academic papers, and technical documentation.
 
 ### G. Temporal and version assets
 
@@ -320,8 +449,6 @@ temporal.version_history
 temporal.amendments
 ```
 
-This can be important for regulation and actuarial research because the correct answer may depend on an effective date rather than only semantic similarity.
-
 ### H. Metadata, taxonomy, and facet assets
 
 These answer: **what type of knowledge is this and how can it be filtered or routed?**
@@ -346,282 +473,242 @@ topic.search
 facet.search
 ```
 
-These assets can support both retrieval filtering and KB routing.
+These assets can support retrieval filters and KB routing profiles.
 
-## Layer 2 and Layer 3 are independent
+## Manifest contract
 
-**KB Assets and the KB Manifest are separate products of the same KB snapshot.**
+A manifest describes the exact published KB package. It should record installed **plugin instances**, not only flat capability booleans.
 
-Layer 2 contains actual searchable or inspectable knowledge structures. Layer 3 contains the identity and contract that describes them.
-
-```text
-                     KB Snapshot
-                    /           \
-                   /             \
-                  ▼               ▼
-          Layer 2 Assets      Layer 3 Manifest
-          ──────────────      ────────────────
-          BM25 index          KB/version identity
-          Vector index        capability declarations
-          Graph               artifact locations
-          Wiki                schema versions
-          Summary tree        artifact digests
-          Formula/Table       builder versions
-          Temporal data       compatibility contract
-```
-
-The manifest is therefore **not a retrieval index** and does not contain all knowledge relationships itself. It is the KB version's identity, inventory, capability declaration, and integrity receipt.
-
-A package may look like:
-
-```text
-kb-build/
-└── regulation/
-    └── <kb-version>/
-        ├── manifest.json
-        ├── documents.jsonl
-        ├── sections.jsonl
-        ├── summaries.jsonl
-        ├── graph/
-        │   ├── entities.jsonl
-        │   ├── relations.jsonl
-        │   └── communities.jsonl
-        ├── wiki/
-        │   ├── pages.jsonl
-        │   └── links.jsonl
-        ├── domain/
-        │   ├── formulas.jsonl
-        │   ├── tables.jsonl
-        │   └── terms.jsonl
-        ├── temporal/
-        │   └── versions.jsonl
-        └── indexes/
-            ├── bm25/
-            └── vector/
-```
-
-Not every KB needs every directory. The manifest declares only the assets that actually exist.
-
-## Manifest-driven capability discovery
-
-Example manifest fragment:
+Example:
 
 ```json
 {
   "schema_version": 1,
   "kb_id": "regulation",
   "kb_version": "kbv_...",
-  "snapshot_fingerprint": "...",
-  "chunk_profile_id": "semantic-v1",
-  "embedding_identity_key": "emb_...",
-  "capabilities": {
-    "search.lexical": true,
-    "search.vector": true,
-    "search.hybrid": true,
-    "structure.section": true,
-    "graph.traverse": true,
-    "wiki.page_lookup": false,
-    "retrieval.hierarchical": true,
-    "formula.lookup": false,
-    "table.query": true,
-    "reference.resolve": true,
-    "temporal.as_of": true,
-    "metadata.filter": true
-  },
-  "artifacts": {
-    "sections": "sections.jsonl",
-    "graph": "graph/",
-    "tables": "domain/tables.jsonl",
-    "temporal": "temporal/versions.jsonl",
-    "bm25_index": "indexes/bm25/",
-    "vector_index": "indexes/vector/"
-  }
+  "snapshot_fingerprint": "snap_...",
+  "plugins": [
+    {
+      "plugin_id": "search.bm25",
+      "plugin_version": "1",
+      "artifact_schema_version": "1",
+      "capabilities": ["search.lexical"],
+      "dependencies": {
+        "chunk_snapshot": "snap_..."
+      },
+      "artifacts": [
+        {
+          "name": "index",
+          "path": "plugins/search.bm25/index/",
+          "digest": "sha256:..."
+        }
+      ]
+    },
+    {
+      "plugin_id": "search.dense-vector",
+      "plugin_version": "1",
+      "artifact_schema_version": "1",
+      "capabilities": ["search.vector"],
+      "dependencies": {
+        "chunk_snapshot": "snap_...",
+        "embedding_identity_key": "emb_..."
+      },
+      "artifacts": [
+        {
+          "name": "index",
+          "path": "plugins/search.dense-vector/index/",
+          "digest": "sha256:..."
+        }
+      ]
+    },
+    {
+      "plugin_id": "graph.entity-relations",
+      "plugin_version": "1",
+      "artifact_schema_version": "1",
+      "capabilities": ["graph.entity_search", "graph.traverse"],
+      "dependencies": {
+        "chunk_snapshot": "snap_..."
+      },
+      "artifacts": [
+        {
+          "name": "graph",
+          "path": "plugins/graph.entity-relations/graph/",
+          "digest": "sha256:..."
+        }
+      ]
+    }
+  ]
 }
 ```
 
-The manifest tells the runtime what is available. It does not create executable behavior by itself.
+This supports several important cases cleanly:
 
-```text
-Manifest capability
-        ↓
-Capability Registry
-        ↓
-Tool Adapter
-        ↓
-Layer 2 Asset
-```
+- one KB can contain BM25 plus one or more vector indexes;
+- different vector plugins can use different embedding identities;
+- Graph/Wiki/Formula/etc. can evolve independently;
+- runtime compatibility can be checked by `plugin_id`, plugin version, artifact schema version, and capability;
+- artifact integrity can be verified by digest.
 
-Example registry:
+Capabilities are what Layer 4 consumes. Plugin IDs and artifact metadata are how Layer 3 proves where those capabilities came from.
 
-| Manifest capability | Runtime tool | Backing asset |
+## Capability Registry and composite runtime capabilities
+
+The Tool Registry maps manifest capabilities to reusable Tool Adapters.
+
+| Manifest capability | Runtime tool | Backing Layer 2 asset |
 | --- | --- | --- |
-| `search.lexical` | `search_bm25()` | BM25 index |
-| `search.vector` | `search_vector()` | Vector index |
-| `search.hybrid` | `search_hybrid()` | BM25 + vector |
-| `retrieval.hierarchical` | `search_hierarchy()` | Summary/tree asset |
-| `graph.traverse` | `trace_graph()` | Graph asset |
-| `wiki.page_lookup` | `get_wiki_page()` | Wiki asset |
-| `formula.lookup` | `lookup_formula()` | Formula cards |
-| `table.query` | `query_table()` | Structured tables |
-| `reference.resolve` | `resolve_reference()` | Reference asset |
-| `temporal.as_of` | `search_as_of()` | Temporal asset |
-| `metadata.filter` | `filter_metadata()` | Metadata/facet asset |
+| `search.lexical` | `search_bm25()` | BM25 plugin |
+| `search.vector` | `search_vector()` | vector-search plugin |
+| `search.sparse` | `search_sparse()` | sparse-search plugin |
+| `search.late_interaction` | `search_late_interaction()` | late-interaction plugin |
+| `retrieval.hierarchical` | `search_hierarchy()` | summary/tree plugin |
+| `graph.traverse` | `trace_graph()` | graph plugin |
+| `wiki.page_lookup` | `get_wiki_page()` | wiki plugin |
+| `formula.lookup` | `lookup_formula()` | formula plugin |
+| `table.query` | `query_table()` | table plugin |
+| `reference.resolve` | `resolve_reference()` | reference plugin |
+| `temporal.as_of` | `search_as_of()` | temporal plugin |
+| `metadata.filter` | `filter_metadata()` | metadata plugin |
 
-A new KB normally requires only a new snapshot, Layer 2 assets, and manifest. A new capability type requires one builder/asset contract and one reusable Tool Adapter; after that, any KB can enable the capability through its manifest.
+Layer 4 may also expose **composite capabilities** that do not correspond to one persisted plugin artifact.
 
-## Plug-in model
-
-This architecture intentionally treats Layer 2 capabilities as plug-ins.
-
-```text
-                    Generic Core
-         ┌──────────────────────────────┐
-         │ KB Snapshot                  │
-         │ Manifest                     │
-         │ Capability Registry          │
-         │ Agent Runtime                │
-         │ Evidence / Citation Contract │
-         └──────────────┬───────────────┘
-                        │
-          ┌─────────────┼─────────────┐
-          ▼             ▼             ▼
-      Search Plugin  Graph Plugin  Domain Plugin
-          │             │             │
-        BM25          GraphRAG       Formula
-        Vector        Wiki           Table
-        Sparse        Summary Tree   Temporal
-        ColBERT       Relations      ...
-```
-
-A capability plug-in should define:
+For example:
 
 ```text
-1. builder contract
-2. artifact schema
-3. manifest capability name
-4. artifact validator
-5. runtime Tool interface
-6. evidence/citation mapping
-7. evaluation cases
+search.lexical + search.vector
+            ↓
+Runtime composition policy
+            ↓
+search.hybrid
+            ↓
+fusion → rerank → EvidenceSet
 ```
 
-This keeps experimental retrieval methods replaceable. The Agent does not need to know whether vector search is FAISS, Qdrant, another vector store, or a late-interaction retriever; it only consumes the registered capability contract.
+This preserves the data/behavior boundary: Layer 2 stores search assets; Layer 4 decides how to combine them.
 
-## Search model
+## Package layout
 
-BM25 and vector search can operate over the same chunks while maintaining different indexes.
+A published KB version may look like:
+
+```text
+kb-build/
+└── regulation/
+    └── <kb-version>/
+        ├── manifest.json
+        ├── snapshot.json
+        └── plugins/
+            ├── search.bm25/
+            │   └── index/
+            ├── search.dense-vector/
+            │   └── index/
+            ├── structure.sections/
+            │   └── sections.jsonl
+            ├── graph.entity-relations/
+            │   ├── entities.jsonl
+            │   ├── relations.jsonl
+            │   └── communities.jsonl
+            ├── wiki.pages/
+            │   ├── pages.jsonl
+            │   └── links.jsonl
+            ├── domain.formula/
+            │   └── formulas.jsonl
+            └── temporal.versions/
+                └── versions.jsonl
+```
+
+Not every KB installs every plugin. The manifest lists only the plugin instances that are part of that immutable KB version.
+
+## KB build and publish flow
 
 ```mermaid
 flowchart LR
-    C[Same Chunk]
-    C --> T[Raw text]
-    C --> E[Embedding]
-    T --> B[BM25 Index]
-    E --> V[Vector Index]
-    B --> H[Hybrid retrieval / fusion]
-    V --> H
-    H --> R[Rerank]
-    R --> EV[Evidence]
-```
-
-BM25 does not need a separate embedding. Vector search embeds the query with the same embedding identity used for the indexed chunks. Hybrid retrieval combines multiple result sets before reranking.
-
-Alternative search plugins such as sparse neural retrieval or late-interaction retrieval may build their own KB-specific representations while preserving the same evidence output contract.
-
-## Reusable asset model
-
-Chunking and standard dense embeddings should be reusable across KBs.
-
-```text
-Markdown document
-    ↓
-immutable ChunkSet
-    ↓
-Chunk[]
-    ↓
-Embedding[chunk_id, embedding_identity]
-```
-
-A KB pins the exact reusable assets it needs:
-
-```text
-KB Regulation ─┐
-               ├── shared ChunkSet / Embeddings
-KB Valuation ──┘
-```
-
-Core identities:
-
-- `document_id` — stable logical document identity.
-- `chunk_set_id` — one immutable chunking result for one document/content/profile combination.
-- `chunk_id` — one retrieval unit inside a chunk set.
-- `embedding_identity_key` — provider/model/dimension/config identity.
-- `kb_id` — logical knowledge-base identity.
-- `snapshot_fingerprint` — exact KB composition identity.
-- `kb_version` — immutable published KB package/version.
-
-## KB build flow
-
-KB build starts from reusable retrieval assets rather than regenerating chunks and embeddings for each KB.
-
-```mermaid
-flowchart LR
-    ASSET[Reusable chunks + embeddings]
+    ASSET[Reusable document / chunk assets]
     SELECT[Select KB documents]
-    PIN[Pin exact chunk sets]
-    SNAP[Create KB snapshot]
-    B2[Build selected Layer 2 plugins]
-    B3[Build independent Manifest]
-    VALIDATE[Validate assets + manifest]
+    PIN[Pin exact ChunkSets]
+    SNAP[Create representation-neutral content snapshot]
+    BUILD[Build or reuse selected Layer 2 plugins]
+    PVALID[Validate plugin artifacts]
+    SEAL[Seal Manifest with versions / schemas / digests]
+    KVALID[Validate complete KB package]
     PUBLISH[Publish immutable KB Version]
 
-    ASSET --> SELECT --> PIN --> SNAP
-    SNAP --> B2
-    SNAP --> B3
-    B2 --> VALIDATE
-    B3 --> VALIDATE
-    VALIDATE --> PUBLISH
+    ASSET --> SELECT --> PIN --> SNAP --> BUILD --> PVALID --> SEAL --> KVALID --> PUBLISH
 ```
 
-Layer 2 and Layer 3 are parallel outputs. Rebuilding one Layer 2 plugin does not automatically require rebuilding unrelated plugins. The manifest changes when the published KB package or capability inventory changes.
+A builder may execute independent Layer 2 plugins in parallel internally, but the **sealed** manifest is created after the selected plugin outputs have been validated.
 
-## Agentic Chat runtime
+## KB registry and Agentic Chat runtime
 
-Chat starts from ready KB versions rather than an unscoped global embedding collection.
+Chat starts from ready KB versions, not from an unscoped global embedding collection.
+
+A small KB registry should contain enough information to route before loading a full manifest, for example:
+
+```text
+KB Registry Entry
+├── kb_id
+├── name / description
+├── routing profile / topics
+├── active kb_version
+└── manifest reference
+```
+
+Runtime sequence:
 
 1. Analyze the question.
-2. Select one or more candidate KBs from the KB registry.
-3. Load selected KB manifests.
-4. Resolve available capabilities through the Capability/Tool Registry.
-5. Choose the appropriate retrieval/navigation tools.
-6. Retrieve evidence.
-7. Rerank, fuse, and deduplicate evidence where appropriate.
-8. Use graph/wiki/hierarchy/domain/temporal tools when the question needs them.
-9. Assess whether the evidence is sufficient.
-10. Within configured limits, refine the query or expand to another KB.
-11. Produce a grounded answer with resolvable citations, or abstain.
+2. Select one or more candidate KBs from the registry.
+3. Load and validate the selected KB manifests.
+4. Resolve compatible tools from installed plugin capabilities.
+5. Derive any allowed composite runtime capabilities, such as hybrid search.
+6. Choose the appropriate search/navigation tools.
+7. Retrieve evidence.
+8. Fuse/rerank/deduplicate where appropriate.
+9. Use graph/wiki/hierarchy/domain/reference/temporal tools when needed.
+10. Assess whether evidence is sufficient.
+11. Within configured limits, refine the query or expand to another KB.
+12. Produce a grounded answer with resolvable citations, or abstain.
 
 ```mermaid
 flowchart LR
     Q[Question]
     ROUTE[Select KBs]
-    M[Load Manifests]
-    CAP[Resolve Capabilities]
+    M[Load + Validate Manifests]
+    CAP[Resolve Plugin Tools]
+    COMP[Derive Composite Capabilities]
     PLAN[Choose Tools]
     RET[Retrieve / Navigate]
-    RR[Rerank / Fusion]
+    RR[Fusion / Rerank]
     SUF{Enough evidence?}
     RETRY[Refine / Expand]
     ANS[Grounded Answer]
     ABS[Abstain]
 
-    Q --> ROUTE --> M --> CAP --> PLAN --> RET --> RR --> SUF
+    Q --> ROUTE --> M --> CAP --> COMP --> PLAN --> RET --> RR --> SUF
     SUF -->|yes| ANS
     SUF -->|no, budget remains| RETRY --> PLAN
     SUF -->|no, budget exhausted| ABS
 ```
 
 The runtime is agentic because it chooses among bounded capabilities and retrieval paths. It is not an unbounded autonomous tool loop.
+
+## Evidence and citation contract
+
+Every Tool Adapter must normalize its result into the same evidence contract so heterogeneous plugins can be fused and evaluated.
+
+A minimal evidence item should be able to identify:
+
+```text
+Evidence
+├── kb_id / kb_version
+├── plugin_id / capability
+├── document_id
+├── section_id (when available)
+├── chunk_id or structured-record id
+├── text / structured payload
+├── retrieval / relevance scores
+└── source citation identity
+```
+
+The Agent should reason over normalized evidence rather than raw FAISS rows, BM25 internals, graph-store records, or plugin-specific JSON.
 
 ## Markdown input contract
 
@@ -664,21 +751,22 @@ source_url: https://example.com/source
 Document content starts here.
 ```
 
-Compatible prebuilt chunk/embedding assets may be reused instead of regenerated when their identities and contracts can be validated.
+Compatible prebuilt chunk/representation assets may be reused instead of regenerated when their identities, provenance, and contracts can be validated.
 
 ## Scope boundary
 
 ### In scope
 
-- Accepting categorized Markdown and/or compatible reusable chunk/embedding assets.
-- Validating document, chunk-set, embedding, KB snapshot, Layer 2 asset, and manifest contracts.
+- Accepting categorized Markdown and/or compatible reusable chunk/representation assets.
+- Validating document, ChunkSet, representation, KB snapshot, Layer 2 plugin, and manifest contracts.
 - Composing independent, versioned knowledge bases.
 - Pluggable Layer 2 builders for search, graph, hierarchy, wiki, domain, reference, temporal, and metadata capabilities.
-- Independent KB manifest build and validation.
+- Sealed KB manifest build and validation.
 - Manifest-driven capability exposure through reusable tools.
 - Agentic KB selection and multi-KB retrieval.
-- Fusion, reranking, evidence assembly, grounded answers, citations, and abstention.
-- Pluggable LLM, embedding, reranker, index, asset-builder, and tool adapters.
+- Runtime composition such as hybrid fusion and reranking.
+- Evidence assembly, grounded answers, citations, and abstention.
+- Pluggable LLM, embedding, reranker, index, asset-builder, and Tool Adapters.
 - CLI/API entry points over shared application services.
 - Reproducible evaluation of routing, retrieval, tool selection, grounding, citations, and answer quality.
 
@@ -690,7 +778,7 @@ Compatible prebuilt chunk/embedding assets may be reused instead of regenerated 
 - Maintaining a general-purpose acquisition pipeline.
 - Unbounded autonomous agents or multi-agent workflow orchestration.
 
-Upstream systems may provide Markdown and reusable retrieval assets. This project focuses on KB composition, pluggable KB capabilities, manifests, and Agentic Chat.
+Upstream systems may provide Markdown and reusable assets. This project focuses on KB composition, pluggable KB capabilities, sealed manifests, and Agentic Chat.
 
 ## Modular architecture
 
@@ -701,9 +789,9 @@ src/
 │   ├── assets/
 │   ├── knowledge_base/
 │   └── evidence/
-├── assets/                    # Reusable chunk/embedding validation
+├── assets/                    # Reusable ChunkSet/representation validation
 ├── build/
-│   ├── snapshot/              # KB composition + fingerprint
+│   ├── snapshot/              # Representation-neutral KB content snapshot
 │   ├── plugins/               # Layer 2 builder plugins
 │   │   ├── search/
 │   │   ├── graph/
@@ -713,11 +801,11 @@ src/
 │   │   ├── reference/
 │   │   ├── temporal/
 │   │   └── metadata/
-│   └── manifest/              # Independent manifest builder/validator
+│   └── manifest/              # Seal/validate KB manifest after plugin validation
 ├── runtime/
 │   ├── routing/               # KB selection
-│   ├── capabilities/          # Manifest capability resolution
-│   ├── retrieval/             # Search/fusion/reranking
+│   ├── capabilities/          # Manifest compatibility + Tool resolution
+│   ├── retrieval/             # Runtime fusion/reranking/composition
 │   ├── sufficiency/           # Evidence policy
 │   └── orchestration/         # Bounded Agent state machine
 ├── tools/                     # Reusable capability Tool Adapters
@@ -729,37 +817,39 @@ src/
 └── ui/
 ```
 
-The Agent must not depend directly on FAISS files, a BM25 library, graph storage, or raw JSON formats. It operates through stable capability and evidence contracts.
+The Agent must not depend directly on FAISS files, a BM25 library, graph storage, or raw plugin formats. It operates through stable capability and evidence contracts.
 
 ## Evaluation
 
 Evaluation should measure every boundary:
 
 - **KB routing accuracy** — correct KB or KB combination.
+- **Manifest/runtime compatibility** — installed capabilities resolve to compatible tools.
 - **Tool selection quality** — appropriate capability chosen.
 - **Retrieval recall** — supporting evidence appears in candidates.
-- **Fusion quality** — multiple retrieval signals combine effectively.
+- **Fusion/reranking quality** — multiple retrieval signals combine effectively.
 - **Graph/hierarchy navigation quality** — multi-hop or global questions reach supporting evidence.
 - **Temporal correctness** — time/version-sensitive questions use the correct source version.
-- **Reranking quality** — strongest evidence reaches final context.
 - **Groundedness** — answer claims are supported.
 - **Citation correctness** — citations resolve to the correct source.
 - **Abstention quality** — unsupported questions are declined.
 - **Answer usefulness** — domain correctness, completeness, and clarity.
 - **Latency and cost** — build/query time, model calls, storage, and token usage.
 
-Evaluation records should pin `kb_version`, `snapshot_fingerprint`, manifest schema, plugin versions, tool/runtime versions, model configuration, and retrieval configuration.
+Evaluation records should pin `kb_version`, `snapshot_fingerprint`, manifest schema version, installed plugin versions/schema versions/digests, Tool/runtime versions, model configuration, and retrieval composition policy.
 
 ## Initial milestones
 
-1. Freeze reusable chunk/embedding asset contracts and identity rules.
-2. Define KB snapshot composition and fingerprinting.
-3. Define the Layer 2 plugin contract: builder, artifact schema, validator, capability name, Tool Adapter, evidence mapping, evaluation.
-4. Implement BM25 and dense vector search plugins over the same pinned chunks.
-5. Define the independent manifest schema and validator.
-6. Implement the Capability/Tool Registry and manifest-driven tool exposure.
-7. Implement bounded KB routing, hybrid retrieval, reranking, citations, and abstention.
-8. Add graph, hierarchy, wiki, domain, temporal, or other plugins only when they have a clear runtime consumer and measurable evaluation value.
+1. Freeze reusable ChunkSet and dense-embedding identity contracts.
+2. Define a representation-neutral KB content snapshot and fingerprint.
+3. Define the canonical seven-part Layer 2 plugin contract.
+4. Implement BM25 and one dense-vector search plugin over the same pinned chunks.
+5. Define the sealed manifest schema with plugin/version/schema/dependency/artifact-digest records.
+6. Implement Manifest validation and the Capability/Tool Registry, including hard failure for unsupported installed capabilities.
+7. Implement bounded KB routing plus Layer 4 hybrid fusion/reranking, citations, and abstention.
+8. Add graph, hierarchy, wiki, domain, reference, temporal, sparse, or late-interaction plugins only when they have a clear runtime consumer and measurable evaluation value.
 9. Expose the same application services through CLI/API and publish repeatable evaluation baselines.
 
-Implementation should remain narrow at first, but the architecture must stay open: **Layer 2 is the extension point; Layer 3 describes what is installed; Layer 4 discovers and uses it.**
+Implementation should remain narrow at first, but the architecture must stay open:
+
+> **Layer 2 is the extension point; Layer 3 seals exactly what is installed; Layer 4 discovers compatible tools and composes them at runtime.**
