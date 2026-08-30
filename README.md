@@ -67,7 +67,7 @@ flowchart TB
     META --> VALIDATE
 
     subgraph L3["3. KB Manifest — sealed control artifact"]
-        MANIFEST["manifest.json\nKB version + snapshot fingerprint\ninstalled plugin contracts\nartifact refs + schema versions + digests"]
+        MANIFEST["manifest.json\nKB version + snapshot fingerprint\ninstalled plugin instances\nartifact refs + schema versions + digests"]
     end
 
     SNAP --> MANIFEST
@@ -178,7 +178,7 @@ KB Asset
   ↓
 Validator
   ↓
-Manifest records installed plugin
+Manifest records installed plugin instance
   ↓
 Tool Adapter exposes its capabilities
   ↓
@@ -200,7 +200,7 @@ Build/reuse selected Layer 2 plugin artifacts
        ↓
 Validate plugin artifacts
        ↓
-Seal manifest with exact plugin versions, schemas, refs and digests
+Seal manifest with exact plugin instances, versions, schemas, refs and digests
        ↓
 Validate complete KB package
        ↓
@@ -224,7 +224,7 @@ Layer 4 contains executable behavior.
 The runtime reads the sealed manifest, validates that every enabled capability has a compatible registered Tool Adapter, and exposes only those tools to the bounded Agent runtime.
 
 ```text
-Manifest installed plugin/capability
+Manifest plugin instance / capability
         ↓
 Capability Registry
         ↓
@@ -236,6 +236,8 @@ Normalized Evidence
 ```
 
 If an enabled capability has no compatible Tool Adapter or the artifact/schema version is unsupported, that KB version is not runtime-ready. The system should fail clearly rather than silently dropping the capability.
+
+When several plugin instances expose the same capability, the registry resolves all compatible instances and runtime policy decides which instance or combination to use.
 
 ## Layer 2 plugin families
 
@@ -477,7 +479,9 @@ These assets can support retrieval filters and KB routing profiles.
 
 ## Manifest contract
 
-A manifest describes the exact published KB package. It should record installed **plugin instances**, not only flat capability booleans.
+A manifest describes the exact published KB package. It records installed **plugin instances**, not only flat capability booleans.
+
+`plugin_id` identifies the reusable plugin type. `instance_id` uniquely identifies one installed instance inside a KB version. This allows the same plugin type to be installed more than once with different models, representations, parameters, or purposes.
 
 Example:
 
@@ -490,49 +494,70 @@ Example:
   "plugins": [
     {
       "plugin_id": "search.bm25",
+      "instance_id": "bm25.default",
       "plugin_version": "1",
       "artifact_schema_version": "1",
       "capabilities": ["search.lexical"],
       "dependencies": {
-        "chunk_snapshot": "snap_..."
+        "snapshot_fingerprint": "snap_..."
       },
       "artifacts": [
         {
           "name": "index",
-          "path": "plugins/search.bm25/index/",
+          "path": "plugins/bm25.default/index/",
           "digest": "sha256:..."
         }
       ]
     },
     {
       "plugin_id": "search.dense-vector",
+      "instance_id": "vector.primary",
       "plugin_version": "1",
       "artifact_schema_version": "1",
       "capabilities": ["search.vector"],
       "dependencies": {
-        "chunk_snapshot": "snap_...",
-        "embedding_identity_key": "emb_..."
+        "snapshot_fingerprint": "snap_...",
+        "embedding_identity_key": "emb_primary_..."
       },
       "artifacts": [
         {
           "name": "index",
-          "path": "plugins/search.dense-vector/index/",
+          "path": "plugins/vector.primary/index/",
+          "digest": "sha256:..."
+        }
+      ]
+    },
+    {
+      "plugin_id": "search.dense-vector",
+      "instance_id": "vector.experimental",
+      "plugin_version": "1",
+      "artifact_schema_version": "1",
+      "capabilities": ["search.vector"],
+      "dependencies": {
+        "snapshot_fingerprint": "snap_...",
+        "embedding_identity_key": "emb_experimental_..."
+      },
+      "artifacts": [
+        {
+          "name": "index",
+          "path": "plugins/vector.experimental/index/",
           "digest": "sha256:..."
         }
       ]
     },
     {
       "plugin_id": "graph.entity-relations",
+      "instance_id": "graph.default",
       "plugin_version": "1",
       "artifact_schema_version": "1",
       "capabilities": ["graph.entity_search", "graph.traverse"],
       "dependencies": {
-        "chunk_snapshot": "snap_..."
+        "snapshot_fingerprint": "snap_..."
       },
       "artifacts": [
         {
           "name": "graph",
-          "path": "plugins/graph.entity-relations/graph/",
+          "path": "plugins/graph.default/graph/",
           "digest": "sha256:..."
         }
       ]
@@ -543,48 +568,49 @@ Example:
 
 This supports several important cases cleanly:
 
-- one KB can contain BM25 plus one or more vector indexes;
-- different vector plugins can use different embedding identities;
+- one KB can contain BM25 plus multiple vector indexes;
+- the same vector plugin type can be installed multiple times with different embedding identities;
 - Graph/Wiki/Formula/etc. can evolve independently;
 - runtime compatibility can be checked by `plugin_id`, plugin version, artifact schema version, and capability;
+- `instance_id` gives runtime traces and evidence an unambiguous source;
 - artifact integrity can be verified by digest.
 
-Capabilities are what Layer 4 consumes. Plugin IDs and artifact metadata are how Layer 3 proves where those capabilities came from.
+Capabilities are what Layer 4 consumes. Plugin/instance identities and artifact metadata are how Layer 3 proves where those capabilities came from.
 
 ## Capability Registry and composite runtime capabilities
 
-The Tool Registry maps manifest capabilities to reusable Tool Adapters.
+The Tool Registry maps manifest plugin instances and capabilities to reusable Tool Adapters.
 
 | Manifest capability | Runtime tool | Backing Layer 2 asset |
 | --- | --- | --- |
-| `search.lexical` | `search_bm25()` | BM25 plugin |
-| `search.vector` | `search_vector()` | vector-search plugin |
-| `search.sparse` | `search_sparse()` | sparse-search plugin |
-| `search.late_interaction` | `search_late_interaction()` | late-interaction plugin |
-| `retrieval.hierarchical` | `search_hierarchy()` | summary/tree plugin |
-| `graph.traverse` | `trace_graph()` | graph plugin |
-| `wiki.page_lookup` | `get_wiki_page()` | wiki plugin |
-| `formula.lookup` | `lookup_formula()` | formula plugin |
-| `table.query` | `query_table()` | table plugin |
-| `reference.resolve` | `resolve_reference()` | reference plugin |
-| `temporal.as_of` | `search_as_of()` | temporal plugin |
-| `metadata.filter` | `filter_metadata()` | metadata plugin |
+| `search.lexical` | `search_bm25()` | BM25 plugin instance |
+| `search.vector` | `search_vector()` | vector-search plugin instance(s) |
+| `search.sparse` | `search_sparse()` | sparse-search plugin instance |
+| `search.late_interaction` | `search_late_interaction()` | late-interaction plugin instance |
+| `retrieval.hierarchical` | `search_hierarchy()` | summary/tree plugin instance |
+| `graph.traverse` | `trace_graph()` | graph plugin instance |
+| `wiki.page_lookup` | `get_wiki_page()` | wiki plugin instance |
+| `formula.lookup` | `lookup_formula()` | formula plugin instance |
+| `table.query` | `query_table()` | table plugin instance |
+| `reference.resolve` | `resolve_reference()` | reference plugin instance |
+| `temporal.as_of` | `search_as_of()` | temporal plugin instance |
+| `metadata.filter` | `filter_metadata()` | metadata plugin instance |
 
 Layer 4 may also expose **composite capabilities** that do not correspond to one persisted plugin artifact.
 
 For example:
 
 ```text
-search.lexical + search.vector
-            ↓
+search.lexical instance + selected search.vector instance(s)
+                         ↓
 Runtime composition policy
-            ↓
+                         ↓
 search.hybrid
-            ↓
+                         ↓
 fusion → rerank → EvidenceSet
 ```
 
-This preserves the data/behavior boundary: Layer 2 stores search assets; Layer 4 decides how to combine them.
+This preserves the data/behavior boundary: Layer 2 stores search assets; Layer 4 decides which compatible instances to call and how to combine them.
 
 ## Package layout
 
@@ -597,13 +623,15 @@ kb-build/
         ├── manifest.json
         ├── snapshot.json
         └── plugins/
-            ├── search.bm25/
+            ├── bm25.default/
             │   └── index/
-            ├── search.dense-vector/
+            ├── vector.primary/
+            │   └── index/
+            ├── vector.experimental/
             │   └── index/
             ├── structure.sections/
             │   └── sections.jsonl
-            ├── graph.entity-relations/
+            ├── graph.default/
             │   ├── entities.jsonl
             │   ├── relations.jsonl
             │   └── communities.jsonl
@@ -628,7 +656,7 @@ flowchart LR
     SNAP[Create representation-neutral content snapshot]
     BUILD[Build or reuse selected Layer 2 plugins]
     PVALID[Validate plugin artifacts]
-    SEAL[Seal Manifest with versions / schemas / digests]
+    SEAL[Seal Manifest with instances / versions / schemas / digests]
     KVALID[Validate complete KB package]
     PUBLISH[Publish immutable KB Version]
 
@@ -657,9 +685,9 @@ Runtime sequence:
 1. Analyze the question.
 2. Select one or more candidate KBs from the registry.
 3. Load and validate the selected KB manifests.
-4. Resolve compatible tools from installed plugin capabilities.
+4. Resolve compatible tools for each installed plugin instance/capability.
 5. Derive any allowed composite runtime capabilities, such as hybrid search.
-6. Choose the appropriate search/navigation tools.
+6. Choose the appropriate plugin instances and search/navigation tools.
 7. Retrieve evidence.
 8. Fuse/rerank/deduplicate where appropriate.
 9. Use graph/wiki/hierarchy/domain/reference/temporal tools when needed.
@@ -672,9 +700,9 @@ flowchart LR
     Q[Question]
     ROUTE[Select KBs]
     M[Load + Validate Manifests]
-    CAP[Resolve Plugin Tools]
+    CAP[Resolve Plugin Instances / Tools]
     COMP[Derive Composite Capabilities]
-    PLAN[Choose Tools]
+    PLAN[Choose Tools / Instances]
     RET[Retrieve / Navigate]
     RR[Fusion / Rerank]
     SUF{Enough evidence?}
@@ -688,7 +716,7 @@ flowchart LR
     SUF -->|no, budget exhausted| ABS
 ```
 
-The runtime is agentic because it chooses among bounded capabilities and retrieval paths. It is not an unbounded autonomous tool loop.
+The runtime is agentic because it chooses among bounded capabilities, plugin instances, and retrieval paths. It is not an unbounded autonomous tool loop.
 
 ## Evidence and citation contract
 
@@ -699,7 +727,7 @@ A minimal evidence item should be able to identify:
 ```text
 Evidence
 ├── kb_id / kb_version
-├── plugin_id / capability
+├── plugin_id / instance_id / capability
 ├── document_id
 ├── section_id (when available)
 ├── chunk_id or structured-record id
@@ -824,8 +852,8 @@ The Agent must not depend directly on FAISS files, a BM25 library, graph storage
 Evaluation should measure every boundary:
 
 - **KB routing accuracy** — correct KB or KB combination.
-- **Manifest/runtime compatibility** — installed capabilities resolve to compatible tools.
-- **Tool selection quality** — appropriate capability chosen.
+- **Manifest/runtime compatibility** — installed capabilities resolve to compatible tools and plugin instances.
+- **Tool/instance selection quality** — appropriate capability and plugin instance chosen.
 - **Retrieval recall** — supporting evidence appears in candidates.
 - **Fusion/reranking quality** — multiple retrieval signals combine effectively.
 - **Graph/hierarchy navigation quality** — multi-hop or global questions reach supporting evidence.
@@ -836,7 +864,7 @@ Evaluation should measure every boundary:
 - **Answer usefulness** — domain correctness, completeness, and clarity.
 - **Latency and cost** — build/query time, model calls, storage, and token usage.
 
-Evaluation records should pin `kb_version`, `snapshot_fingerprint`, manifest schema version, installed plugin versions/schema versions/digests, Tool/runtime versions, model configuration, and retrieval composition policy.
+Evaluation records should pin `kb_version`, `snapshot_fingerprint`, manifest schema version, plugin IDs/instance IDs/versions/schema versions/digests, Tool/runtime versions, model configuration, and retrieval composition policy.
 
 ## Initial milestones
 
@@ -844,7 +872,7 @@ Evaluation records should pin `kb_version`, `snapshot_fingerprint`, manifest sch
 2. Define a representation-neutral KB content snapshot and fingerprint.
 3. Define the canonical seven-part Layer 2 plugin contract.
 4. Implement BM25 and one dense-vector search plugin over the same pinned chunks.
-5. Define the sealed manifest schema with plugin/version/schema/dependency/artifact-digest records.
+5. Define the sealed manifest schema with plugin type/instance/version/schema/dependency/artifact-digest records.
 6. Implement Manifest validation and the Capability/Tool Registry, including hard failure for unsupported installed capabilities.
 7. Implement bounded KB routing plus Layer 4 hybrid fusion/reranking, citations, and abstention.
 8. Add graph, hierarchy, wiki, domain, reference, temporal, sparse, or late-interaction plugins only when they have a clear runtime consumer and measurable evaluation value.
@@ -852,4 +880,4 @@ Evaluation records should pin `kb_version`, `snapshot_fingerprint`, manifest sch
 
 Implementation should remain narrow at first, but the architecture must stay open:
 
-> **Layer 2 is the extension point; Layer 3 seals exactly what is installed; Layer 4 discovers compatible tools and composes them at runtime.**
+> **Layer 2 is the extension point; Layer 3 seals exactly what is installed; Layer 4 discovers compatible plugin instances and composes them at runtime.**
